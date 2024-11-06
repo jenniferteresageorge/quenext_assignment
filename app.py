@@ -1,15 +1,14 @@
+import os
+import io
 from flask import Flask, request, jsonify, render_template
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.llms import Cohere
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_core.runnables import RunnablePassthrough
 from PyPDF2 import PdfReader
-from io import BytesIO
-import os
 
 app = Flask(__name__)
 
@@ -86,16 +85,22 @@ def home():
 def upload_pdf():
     file = request.files['file']
     if file:
-        # Read the file as a binary stream and process directly
-        pdf_text = ""
-        pdf_reader = PdfReader(BytesIO(file.read()))
-        for page in pdf_reader.pages:
-            pdf_text += page.extract_text()
+        try:
+            # Read the PDF file directly in memory
+            pdf_text = ""
+            pdf_reader = PdfReader(file)
+            for page in pdf_reader.pages:
+                pdf_text += page.extract_text()
+            
+            if not pdf_text:
+                return jsonify({"error": "Failed to extract text from PDF"}), 400
 
-        # Create index and retriever without saving file to disk
-        create_index_and_retriever(pdf_text)
-        
-        return jsonify({"message": "PDF processed and ready for queries."})
+            # Create index and retriever
+            create_index_and_retriever(pdf_text)
+            
+            return jsonify({"message": "PDF processed and ready for queries."})
+        except Exception as e:
+            return jsonify({"error": f"Failed to process the PDF: {str(e)}"}), 400
     else:
         return jsonify({"message": "No file uploaded."}), 400
 
@@ -118,16 +123,16 @@ def earnings_transcript_summary():
             file = request.files['transcript_file']
             company_name = request.form['company_name']
             
-            # Read the PDF directly from the upload
+            # Read the PDF file directly in memory
             pdf_text = ""
-            pdf_reader = PdfReader(BytesIO(file.read()))
+            pdf_reader = PdfReader(file)
             for page in pdf_reader.pages:
                 pdf_text += page.extract_text()
 
             if not pdf_text:
                 return jsonify({"error": "Failed to extract text from PDF"}), 400
 
-            # Create index and retriever for summarization
+            # Create index and retriever
             create_index_and_retriever(pdf_text)
 
         elif request.is_json:

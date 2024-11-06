@@ -8,13 +8,10 @@ from langchain_huggingface import HuggingFaceEmbeddings  # Updated import
 from langchain_community.vectorstores import FAISS
 from langchain_core.runnables import RunnablePassthrough
 from PyPDF2 import PdfReader
+from io import BytesIO
 import os
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
-
-if not os.path.exists('uploads'):
-    os.makedirs('uploads')
 
 # Initialize model and vector store variables
 vectorstore = None
@@ -81,16 +78,13 @@ def home():
 def upload_pdf():
     file = request.files['file']
     if file:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(filepath)
-
-        # Extract text from the uploaded PDF
+        # Read the file as a binary stream and process directly
         pdf_text = ""
-        pdf_reader = PdfReader(filepath)
+        pdf_reader = PdfReader(BytesIO(file.read()))
         for page in pdf_reader.pages:
             pdf_text += page.extract_text()
 
-        # Create index and retriever
+        # Create index and retriever without saving file to disk
         create_index_and_retriever(pdf_text)
         
         return jsonify({"message": "PDF processed and ready for queries."})
@@ -115,14 +109,10 @@ def earnings_transcript_summary():
         if 'transcript_file' in request.files and 'company_name' in request.form:
             file = request.files['transcript_file']
             company_name = request.form['company_name']
-            if file.filename == '':
-                return jsonify({"error": "No file provided"}), 400
             
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-            file.save(filepath)
-
+            # Read the PDF directly from the upload
             pdf_text = ""
-            pdf_reader = PdfReader(filepath)
+            pdf_reader = PdfReader(BytesIO(file.read()))
             for page in pdf_reader.pages:
                 pdf_text += page.extract_text()
 

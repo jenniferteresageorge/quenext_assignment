@@ -1,14 +1,15 @@
-import os
-import io
 from flask import Flask, request, jsonify, render_template
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.llms import Cohere
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.llms import Cohere  # Revert to original import if langchain-cohere fails
+from langchain_huggingface import HuggingFaceEmbeddings  # Updated import
 from langchain_community.vectorstores import FAISS
+from langchain_core.runnables import RunnablePassthrough
 from PyPDF2 import PdfReader
+import io  # Import io to handle file as byte stream
+import os
 
 app = Flask(__name__)
 
@@ -44,22 +45,14 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 def generate_answer(question):
-    # Ensure the LLM is initialized correctly
     cohere_llm = Cohere(model="command", temperature=0.1, cohere_api_key="701G3pd6VNnGrhEmAQmMs8r3SXkvdlD6XBTu4leC")
-
-    # Ensure the retriever and documents are correctly formatted
-    if retriever:
-        docs = retriever.get_relevant_documents(question)
-        context = format_docs(docs)
-
-        # Form the prompt with context and question
-        prompt_with_context = prompt.format(context=context, question=question)
-
-        # Run the LLM on the formatted prompt
-        answer = cohere_llm.run(input=prompt_with_context)
-        return answer if answer else "No answer found"
-    else:
-        return "Retriever not set up properly."
+    rag_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough() }
+        | prompt
+        | cohere_llm
+        | StrOutputParser()
+    )
+    return rag_chain.invoke(question)
 
 def create_index_and_retriever(pdf_text):
     # Split the text into chunks
@@ -85,40 +78,30 @@ def home():
 def upload_pdf():
     file = request.files['file']
     if file:
-        try:
-            # Read the PDF file directly in memory
-            pdf_text = ""
-            pdf_reader = PdfReader(file)
-            for page in pdf_reader.pages:
-                pdf_text += page.extract_text()
-            
-            if not pdf_text:
-                return jsonify({"error": "Failed to extract text from PDF"}), 400
+        # Process the PDF directly from the byte stream (without saving to disk)
+        pdf_text = ""
+        pdf_reader = PdfReader(io.BytesIO(file.read()))  # Read PDF directly from the uploaded byte stream
+        for page in pdf_reader.pages:
+            pdf_text += page.extract_text()
 
-            # Create index and retriever
-            create_index_and_retriever(pdf_text)
-            
-            return jsonify({"message": "PDF processed and ready for queries."})
-        except Exception as e:
-            return jsonify({"error": f"Failed to process the PDF: {str(e)}"}), 400
+        # Create index and retriever
+        create_index_and_retriever(pdf_text)
+        
+        return jsonify({"message": "PDF processed and ready for queries."})
     else:
         return jsonify({"message": "No file uploaded."}), 400
 
 @app.route('/query', methods=['POST'])
 def query():
-    if not request.is_json:
-        return jsonify({"error": "Expected JSON input"}), 400
-
     question = request.json.get('question')
     if not question:
-        return jsonify({"error": "No question provided."}), 400
+        return jsonify({"message": "No question provided."}), 400
     
     if not retriever:
-        return jsonify({"error": "No PDF processed yet."}), 400
-
+        return jsonify({"message": "No PDF processed yet."}), 400
+    
     answer = generate_answer(question)
     return jsonify({"answer": answer})
-
 
 @app.route("/earnings_transcript_summary", methods=["POST"])
 def earnings_transcript_summary():
@@ -126,17 +109,19 @@ def earnings_transcript_summary():
         if 'transcript_file' in request.files and 'company_name' in request.form:
             file = request.files['transcript_file']
             company_name = request.form['company_name']
-            
-            # Read the PDF file directly in memory
+            if file.filename == '':
+                return jsonify({"error": "No file provided"}), 400
+
+            # Process the PDF directly from the byte stream (without saving to disk)
             pdf_text = ""
-            pdf_reader = PdfReader(file)
+            pdf_reader = PdfReader(io.BytesIO(file.read()))  # Read PDF directly from the uploaded byte stream
             for page in pdf_reader.pages:
                 pdf_text += page.extract_text()
 
             if not pdf_text:
                 return jsonify({"error": "Failed to extract text from PDF"}), 400
 
-            # Create index and retriever
+            # Create index and retriever for summarization
             create_index_and_retriever(pdf_text)
 
         elif request.is_json:

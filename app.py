@@ -57,7 +57,7 @@ def generate_answer(question):
 
         # Run the LLM on the formatted prompt
         answer = cohere_llm.run(input=prompt_with_context)
-        return answer
+        return answer if answer else "No answer found"
     else:
         return "Retriever not set up properly."
 
@@ -106,15 +106,19 @@ def upload_pdf():
 
 @app.route('/query', methods=['POST'])
 def query():
+    if not request.is_json:
+        return jsonify({"error": "Expected JSON input"}), 400
+
     question = request.json.get('question')
     if not question:
-        return jsonify({"message": "No question provided."}), 400
+        return jsonify({"error": "No question provided."}), 400
     
     if not retriever:
-        return jsonify({"message": "No PDF processed yet."}), 400
-    
+        return jsonify({"error": "No PDF processed yet."}), 400
+
     answer = generate_answer(question)
     return jsonify({"answer": answer})
+
 
 @app.route("/earnings_transcript_summary", methods=["POST"])
 def earnings_transcript_summary():

@@ -99,7 +99,6 @@ lancedb==0.5.7
 langchain==0.3.7
 langchain-community==0.3.5
 langchain-experimental==0.3.3
-langchain-google-genai==1.0.5
 langchain-huggingface==0.1.2
 langchain-openai==0.1.20
 langchain-text-splitters==0.3.2

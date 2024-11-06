@@ -1,10 +1,10 @@
 from flask import Flask, request, jsonify, render_template
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.llms import Cohere  # Revert to original import if langchain-cohere fails
-from langchain_huggingface import HuggingFaceEmbeddings  # Updated import
+from langchain_community.llms import Cohere
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.runnables import RunnablePassthrough
 from PyPDF2 import PdfReader
@@ -26,16 +26,17 @@ class SummaryOutput(BaseModel):
     environmental_risks: str = Field(description="Environmental Risks Summary")
     regulatory_or_policy_changes: str = Field(description="Regulatory or Policy Changes Summary")
 
+# Define output parser
 parser = JsonOutputParser(pydantic_object=SummaryOutput)
 
 # Define prompt template
 prompt_template = """Answer the question as precisely as possible using the provided context. If the question is not contained in the context, try answering on your own knowledge.
 
 Context: 
-{context}?
+{context}
 
 Question: 
-{question} 
+{question}
 
 Answer:
 """
@@ -46,13 +47,13 @@ def format_docs(docs):
 
 def generate_answer(question):
     cohere_llm = Cohere(model="command", temperature=0.1, cohere_api_key="701G3pd6VNnGrhEmAQmMs8r3SXkvdlD6XBTu4leC")
-    rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | cohere_llm
-        | StrOutputParser()
-    )
-    return rag_chain.invoke(question)
+    
+    # Use retriever to fetch relevant context
+    context = retriever.retrieve(question)
+    
+    # Construct the chain for question-answering
+    rag_chain = prompt | cohere_llm | parser
+    return rag_chain.invoke({"context": context, "question": question})
 
 def create_index_and_retriever(pdf_text):
     # Split the text into chunks
@@ -76,36 +77,47 @@ def home():
 
 @app.route('/upload', methods=['POST'])
 def upload_pdf():
-    file = request.files['file']
+    file = request.files.get('file')
     if file:
         # Read the file as a binary stream and process directly
         pdf_text = ""
-        pdf_reader = PdfReader(BytesIO(file.read()))
-        for page in pdf_reader.pages:
-            pdf_text += page.extract_text()
+        try:
+            pdf_reader = PdfReader(BytesIO(file.read()))
+            for page in pdf_reader.pages:
+                pdf_text += page.extract_text()
 
-        # Create index and retriever without saving file to disk
-        create_index_and_retriever(pdf_text)
-        
-        return jsonify({"message": "PDF processed and ready for queries."})
+            # Create index and retriever without saving file to disk
+            create_index_and_retriever(pdf_text)
+            return jsonify({"message": "PDF processed and ready for queries."})
+
+        except Exception as e:
+            return jsonify({"message": f"Error processing PDF: {str(e)}"}), 400
     else:
         return jsonify({"message": "No file uploaded."}), 400
 
 @app.route('/query', methods=['POST'])
 def query():
-    question = request.json.get('question')
+    # Check if the request is JSON
+    if not request.is_json:
+        return jsonify({"message": "Invalid JSON."}), 400
+    
+    data = request.get_json()
+    question = data.get('question')
+    
     if not question:
         return jsonify({"message": "No question provided."}), 400
-    
+
     if not retriever:
         return jsonify({"message": "No PDF processed yet."}), 400
-    
+
+    # Generate and return the answer
     answer = generate_answer(question)
     return jsonify({"answer": answer})
 
 @app.route("/earnings_transcript_summary", methods=["POST"])
 def earnings_transcript_summary():
     try:
+        # Check if the file is included in the request
         if 'transcript_file' in request.files and 'company_name' in request.form:
             file = request.files['transcript_file']
             company_name = request.form['company_name']
@@ -133,15 +145,16 @@ def earnings_transcript_summary():
 
         # Define categories and summarize
         summary = {}
-        for category in [
+        categories = [
             "Financial Performance", 
             "Market Dynamics", 
             "Expansion Plans", 
             "Environmental Risks", 
             "Regulatory or Policy Changes"
-        ]:
-            answer = generate_answer(category)
-            summary[category.lower().replace(" ", "_")] = answer
+        ]
+        
+        for category in categories:
+            summary[category.lower().replace(" ", "_")] = generate_answer(category)
 
         summary["company_name"] = company_name
         return jsonify(summary), 200
@@ -152,4 +165,3 @@ def earnings_transcript_summary():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))  # Render provides a PORT environment variable
     app.run(host="0.0.0.0", port=port, debug=True)
-

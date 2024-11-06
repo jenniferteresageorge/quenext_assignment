@@ -7,12 +7,55 @@
 </head>
 <body>
     <h1>Upload Earnings Call Transcript</h1>
-    <form action="/earnings_transcript_summary" method="post" enctype="multipart/form-data">
+    <form id="transcriptForm" enctype="multipart/form-data">
         <label for="company_name">Company Name:</label>
         <input type="text" id="company_name" name="company_name" required><br><br>
+        
         <label for="transcript_file">Select Transcript File (PDF):</label>
         <input type="file" id="transcript_file" name="transcript_file" required><br><br>
+        
         <button type="submit">Submit</button>
     </form>
+
+    <h2>Summary Results</h2>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('transcriptForm').onsubmit = async function(event) {
+            event.preventDefault();  // Prevent form from submitting traditionally
+            
+            const formData = new FormData();
+            formData.append('company_name', document.getElementById('company_name').value);
+            formData.append('transcript_file', document.getElementById('transcript_file').files[0]);
+
+            // Display loading message
+            document.getElementById('result').innerHTML = "Processing, please wait...";
+
+            try {
+                const response = await fetch('/earnings_transcript_summary', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Display the summary results
+                    document.getElementById('result').innerHTML = `
+                        <h3>Summary for ${result.company_name}</h3>
+                        <p><strong>Financial Performance:</strong> ${result.financial_performance}</p>
+                        <p><strong>Market Dynamics:</strong> ${result.market_dynamics}</p>
+                        <p><strong>Expansion Plans:</strong> ${result.expansion_plans}</p>
+                        <p><strong>Environmental Risks:</strong> ${result.environmental_risks}</p>
+                        <p><strong>Regulatory or Policy Changes:</strong> ${result.regulatory_or_policy_changes}</p>
+                    `;
+                } else {
+                    document.getElementById('result').innerHTML = `<p style="color: red;">Error: ${result.error}</p>`;
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `<p style="color: red;">An error occurred: ${error.message}</p>`;
+            }
+        };
+    </script>
 </body>
 </html>

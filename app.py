@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_cohere.models import Cohere
-#from langchain_community.llms import Cohere  # Revert to original import if langchain-cohere fails
+#from langchain_cohere.models import Cohere
+from langchain_community.llms import Cohere  # Revert to original import if langchain-cohere fails
 from langchain_huggingface import HuggingFaceEmbeddings  # Updated import
 from langchain_community.vectorstores import FAISS
 from langchain_core.runnables import RunnablePassthrough

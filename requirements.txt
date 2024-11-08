@@ -4,6 +4,7 @@ langchain-core
 langchain-text-splitters
 langchain-community
 langchain-huggingface
+langchaib-cohere
 sentence-transformers
 faiss-cpu
 six
